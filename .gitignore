@@ -11,8 +11,6 @@ CMakeCache.txt
 CMakeFiles/
 
 *.exe
-*.dll
-*.lib
 *.pdb
 *.obj
 *.o
