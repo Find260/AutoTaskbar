@@ -6,7 +6,7 @@ add_definitions(-DUNICODE -D_UNICODE)
 
 set(RESOURCE_FILES resources.rc)
 
-add_executable(${PROJECT_NAME}
+add_executable(${PROJECT_NAME} WIN32
         main.cpp
         TaskbarManager.cpp
         TaskbarManager.h
