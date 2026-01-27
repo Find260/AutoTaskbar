@@ -50,54 +50,6 @@ void SystemTray::LoadConfig() {
     }
 }
 
-// 快捷键对话框
-/*
-INT_PTR CALLBACK SystemTray::HotkeyDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam) {
-    static SystemTray *pThis = nullptr;
-    static HWND hEdit = nullptr;
-    switch (msg) {
-        case WM_INITDIALOG:
-            pThis = (SystemTray *) lParam;
-            SetWindowTextW(hDlg, L"设置热键");
-            CreateWindowExW(0, L"STATIC", L"请直接按下键盘组合键：", WS_CHILD | WS_VISIBLE, 20, 15, 150, 20, hDlg, nullptr,
-                            nullptr, nullptr);
-            hEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", pThis->m_hotkeyStr.c_str(),
-                                    WS_CHILD | WS_VISIBLE | ES_CENTER | ES_READONLY, 20, 40, 160, 25, hDlg, nullptr,
-                                    nullptr,
-                                    nullptr);
-            CreateWindowExW(0, L"BUTTON", L"确定", WS_CHILD | WS_VISIBLE, 30, 80, 60, 25, hDlg, (HMENU) IDOK, nullptr,
-                            nullptr);
-            CreateWindowExW(0, L"BUTTON", L"取消", WS_CHILD | WS_VISIBLE, 110, 80, 60, 25, hDlg, (HMENU) IDCANCEL,
-                            nullptr,
-                            nullptr);
-            return (INT_PTR) TRUE;
-
-        case WM_KEYDOWN:
-        case WM_SYSKEYDOWN: {
-            std::wstring mods = L"";
-            if (GetAsyncKeyState(VK_CONTROL) & 0x8000) mods += L"Ctrl+";
-            if (GetAsyncKeyState(VK_MENU) & 0x8000) mods += L"Alt+";
-            if (GetAsyncKeyState(VK_SHIFT) & 0x8000) mods += L"Shift+";
-            wchar_t name[64];
-            UINT sc = (lParam >> 16) & 0xFF;
-            GetKeyNameTextW(sc << 16, name, 64);
-            if (wcscmp(name, L"Control") != 0 && wcscmp(name, L"Alt") != 0 && wcscmp(name, L"Shift") != 0)
-                SetWindowTextW(hEdit, (mods + name).c_str());
-            return (INT_PTR) TRUE;
-        }
-        case WM_COMMAND:
-            if (LOWORD(wParam) == IDOK) {
-                wchar_t buf[128];
-                GetWindowTextW(hEdit, buf, 128);
-                pThis->m_hotkeyStr = buf;
-                EndDialog(hDlg, IDOK);
-            }
-            else if (LOWORD(wParam) == IDCANCEL) EndDialog(hDlg, IDCANCEL);
-            break;
-    }
-    return (INT_PTR) FALSE;
-}
-*/
 
 void SystemTray::ShowContextMenu(HWND hWnd) {
     HMENU hMenu = CreatePopupMenu();
@@ -153,25 +105,10 @@ LRESULT CALLBACK SystemTray::WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
             else {
                 int mode = id - 1400;
                 if (mode == 2) {
-                    /*#pragma pack(push, 2)
-                                        struct {
-                                            WORD v;
-                                            WORD s;
-                                            DWORD h;
-                                            DWORD e;
-                                            DWORD st;
-                                            WORD c;
-                                            short x;
-                                            short y;
-                                            short cx;
-                                            short cy;
-                                        }
-                                                t = {1, 0xFFFF, 0, 0, WS_CAPTION | WS_SYSMENU | DS_MODALFRAME | DS_CENTER, 0, 0, 0, 180,
-                                                     100};
-                    #pragma pack(pop)
-                                        if (DialogBoxIndirectParamW(st.m_hInstance, (LPDLGTEMPLATE) &t, hWnd, HotkeyDlgProc,
-                                                                    (LPARAM) &st) == IDOK)
-                                            st.m_callMode = 2;*/
+                    st.m_callMode = 2;
+                    /*
+                     * 快捷键修改逻辑
+                     */
                 }
                 else st.m_callMode = mode;
             }

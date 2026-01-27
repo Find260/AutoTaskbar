@@ -22,6 +22,7 @@ HMODULE GetRemoteModuleHandle(DWORD pid, const wchar_t *moduleName) {
 
 int TaskbarManager::ModeSetting = 10; // 默认
 int TaskbarManager::callSetting = 0;
+TaskbarMode TaskbarManager::lastMode;
 
 std::wstring TaskbarManager::GetConfigPath() {
     wchar_t path[MAX_PATH];
@@ -68,22 +69,23 @@ void TaskbarManager::SaveConfig() {
                 << L"  \"desktopMode\": " << 0 << L",\n"
                 << L"  \"maxMode\": " << 2 << L",\n"
                 << L"  \"touchMode\": " << 2 << L",\n"
-                << L"  \"callMode\": " << 1 << L"\n"
+                << L"  \"callMode\": " << 1 << L",\n"
+                << L"  \"hotkey\": \"" << "Win" << L"\"\n"
                 << L"}\n";
         file.close();
     }
 }
 
+// 鼠标钩子
 LRESULT CALLBACK TaskbarManager::MouseProc(int nCode, WPARAM wParam,
                                            LPARAM lParam) {
-    static TaskbarMode lastMode;
     if (nCode >= 0) {
         auto &mgr = TaskbarManager::getInstance();
         if (wParam == WM_LBUTTONDOWN) {
-            // std::cout << "点击事件" << std::endl;
+            //std::cout << "点击事件" << std::endl;112@
             MSLLHOOKSTRUCT *pMouseStruct = (MSLLHOOKSTRUCT *) lParam;
             POINT pt = pMouseStruct->pt;
-            // std::cout << "点击位置: " << pt.x << ", " << pt.y << " " <<
+            //std::cout << "点击位置: " << pt.x << ", " << pt.y << " " <<
             // mgr.g_taskbarRect.top << std::endl;
             if (pt.y >= mgr.g_taskbarRect.bottom - 2 && !mgr.isPaused() &&
                 mgr.callSetting == 1) {
@@ -101,6 +103,38 @@ LRESULT CALLBACK TaskbarManager::MouseProc(int nCode, WPARAM wParam,
             else if (!PtInRect(&mgr.g_taskbarRect, pt) && mgr.isPaused()) {
                 mgr.isPaused() = false;
                 mgr.ControlTaskbarLock(lastMode);
+            }
+        }
+    }
+    return CallNextHookEx(nullptr, nCode, wParam, lParam);
+}
+
+// 键盘钩子
+LRESULT CALLBACK TaskbarManager::KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode == HC_ACTION) {
+        if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
+            KBDLLHOOKSTRUCT *pKeyStruct = (KBDLLHOOKSTRUCT *) lParam;
+            if (pKeyStruct->vkCode == VK_LWIN || pKeyStruct->vkCode == VK_RWIN) {
+                auto &mgr = TaskbarManager::getInstance();
+                if (!mgr.isPaused() && mgr.callSetting == 2) {
+                    lastMode = mgr.currentMode().load();
+                    // 暂停任务栏的调整
+                    //std::cout << "1Win" << std::endl;
+                    mgr.isPaused() = true;
+                    mgr.ControlTaskbarLock(MODE_ALWAYS_SHOW);
+                    std::thread([&mgr]() {
+                        while (mgr.isPaused()) {
+                            Sleep(50);
+                        }
+                    }).detach();
+                }
+                else if (mgr.isPaused() && mgr.callSetting == 2) {
+                    //std::cout << "2Win" << std::endl;
+                    mgr.isPaused() = false;
+                    mgr.ControlTaskbarLock(lastMode);
+                }
+                // “拦截”Win键（让开始菜单不弹出来）
+                // return 1;
             }
         }
     }
@@ -131,7 +165,7 @@ bool TaskbarManager::IsExcludedWindow(HWND hwnd) {
 }
 
 void TaskbarManager::ControlTaskbarLock(TaskbarMode mode) {
-    std::cout << "adjust taskbar to: " << mode << std::endl;
+    //std::cout << "adjust taskbar to: " << mode << std::endl;
     switch (mode) {
         case MODE_ALWAYS_SHOW:
             if (AutoHideTag == 0 && this->windowStatus != 2) {
@@ -209,8 +243,7 @@ void TaskbarManager::UpDateWindowStatus() {
             }
             RECT wr;
             if (GetWindowRect(hwnd, &wr)) {
-                std::cout << "wr.bottom: " << wr.bottom << ", g_taskbarRect.top: " << c->ptr->g_taskbarRect.top <<
-                        std::endl;
+                //std::cout << "wr.bottom: " << wr.bottom << ", g_taskbarRect.top: " << c->ptr->g_taskbarRect.top << std::endl;
                 if (wr.bottom >= c->ptr->g_taskbarRect.top) {
                     if (wr.top <= 0) {
                         *c->res = 1;
@@ -224,7 +257,7 @@ void TaskbarManager::UpDateWindowStatus() {
             return TRUE;
         },
         (LPARAM) &ctx);
-    std::cout << "window status: " << status << std::endl;
+    //std::cout << "window status: " << status << std::endl;
     this->windowStatus = status;
 }
 
@@ -300,7 +333,7 @@ void TaskbarManager::injector(bool isInject) {
                 std::wstring(currentDir) + L"\\AutoTaskbarHook.dll";
         const wchar_t *dllPath = fullDllPath.c_str();
         if (_waccess(dllPath, 0) != 0) {
-            std::wcerr << L"ERROR: DLL file not found at: " << dllPath << std::endl;
+            // std::wcerr << L"ERROR: DLL file not found at: " << dllPath << std::endl;
             return;
         }
 
@@ -317,7 +350,7 @@ void TaskbarManager::injector(bool isInject) {
             if (hThread) {
                 WaitForSingleObject(hThread, INFINITE);
                 CloseHandle(hThread);
-                // std::cout << "SUCCESS: DLL Injected and Hooked." << std::endl;
+                //std::cout << "SUCCESS: DLL Injected and Hooked." << std::endl;
             }
         }
     }
@@ -325,7 +358,7 @@ void TaskbarManager::injector(bool isInject) {
         // 卸载
         HWND hTray = FindWindowW(L"Shell_TrayWnd", nullptr);
         if (!hTray) {
-            // std::cout << "Error: Could not find Shell_TrayWnd" << std::endl;
+            //std::cout << "Error: Could not find Shell_TrayWnd" << std::endl;
             return;
         }
 
@@ -340,51 +373,48 @@ void TaskbarManager::injector(bool isInject) {
             if (hThread) {
                 WaitForSingleObject(hThread, INFINITE);
                 CloseHandle(hThread);
-                // std::cout << "SUCCESS: DLL Unloaded." << std::endl;
+                //std::cout << "SUCCESS: DLL Unloaded." << std::endl;
             }
         }
         else {
-            // std::cout << "WARNING: DLL Not Found in Remote Process." << std::endl;
+            //std::cout << "WARNING: DLL Not Found in Remote Process." << std::endl;
         }
     }
     CloseHandle(hProcess);
 }
 
+
 TaskbarManager::TaskbarManager() {
     Init();
     injector(true);
-    m_hookThread = std::thread([this]() {
-        this->m_hMouseHook = SetWindowsHookEx(
-            WH_MOUSE_LL, TaskbarManager::MouseProc, GetModuleHandle(nullptr), 0);
-        MSG msg;
-        while (GetMessage(&msg, nullptr, 0, 0)) {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        }
-        if (m_hMouseHook) {
-            UnhookWindowsHookEx(this->m_hMouseHook);
-        }
-    });
-    m_hookThread.detach();
+
+    // 安装钩子
+    InstallHook();
 }
 
 TaskbarManager::~TaskbarManager() {
     this->injector(false);
     ControlTaskbarLock(MODE_AUTO_HIDE_SOFT);
     ShowTaskbar2(false);
+
     // 卸载钩子
-    if (m_hMouseHook) {
-        PostThreadMessage(GetThreadId(m_hookThread.native_handle()), WM_QUIT, 0, 0);
+    if (this->m_hKeyHook) {
+        UnhookWindowsHookEx(this->m_hKeyHook);
+        this->m_hKeyHook = nullptr;
+    }
+    if (this->m_hMouseHook) {
+        UnhookWindowsHookEx(this->m_hMouseHook);
+        this->m_hMouseHook = nullptr;
     }
 }
+
 
 void TaskbarManager::Init() {
     if (!std::filesystem::exists(GetConfigPath())) {
         SaveConfig();
     }
     LoadConfig();
-    // std::cout << "Init TaskbarManager: " << ModeSetting << " " << callSetting
-    // << std::endl;
+    //std::cout << "Init TaskbarManager: " << ModeSetting << " " << callSetting << std::endl;
     RefreshTaskbarInfo();
     // 自动隐藏系统设置开关
     if (((TaskbarMode) (ModeSetting >> 2) & 3) == MODE_ALWAYS_SHOW) {
@@ -395,4 +425,42 @@ void TaskbarManager::Init() {
         SetTaskbarAutoHide(true);
         AutoHideTag = 1;
     }
+    /* 重新安装钩子
+    if (this->m_hKeyHook) {
+        UnhookWindowsHookEx(this->m_hKeyHook);
+        this->m_hKeyHook = nullptr;
+    }
+    if (this->m_hMouseHook) {
+        UnhookWindowsHookEx(this->m_hMouseHook);
+        this->m_hMouseHook = nullptr;
+    }
+    PostThreadMessage(GetThreadId(m_hookThread.native_handle()), WM_QUIT, 0, 0);
+    InstallHook();
+    */
 }
+
+void TaskbarManager::InstallHook() {
+    m_hookThread = std::thread([this]() {
+       // if (callSetting == 2) {
+       //     // 键盘钩子
+       //     this->m_hKeyHook = SetWindowsHookEx(WH_KEYBOARD_LL,KeyboardProc,GetModuleHandle(nullptr),0);
+       // }
+       // else if (callSetting == 1) {
+       //     // 鼠标钩子
+       //     this->m_hMouseHook = SetWindowsHookEx(WH_MOUSE_LL,MouseProc,GetModuleHandle(nullptr),0);
+       // }
+
+       this->m_hKeyHook = SetWindowsHookEx(WH_KEYBOARD_LL,KeyboardProc,GetModuleHandle(nullptr),0);
+       this->m_hMouseHook = SetWindowsHookEx(WH_MOUSE_LL,MouseProc,GetModuleHandle(nullptr),0);
+       // if (!this->m_hKeyHook && !this->m_hMouseHook) {
+       //     return;
+       // }
+       MSG msg;
+       while (GetMessage(&msg, nullptr, 0, 0)) {
+           TranslateMessage(&msg);
+           DispatchMessage(&msg);
+       }
+   });
+    m_hookThread.detach();
+}
+

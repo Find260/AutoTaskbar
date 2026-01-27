@@ -8,7 +8,6 @@
 #include <iostream>
 #include <fstream>
 #include <filesystem>
-#include <io.h>
 #include <tlhelp32.h>
 #include <Shlwapi.h>
 
@@ -44,6 +43,8 @@ public:
 
     void injector(bool tag);
 
+    void InstallHook();
+
     bool IsExcludedWindow(HWND hwnd);
 
     void ControlTaskbarLock(TaskbarMode mode);
@@ -61,6 +62,8 @@ public:
 //00显示、01自动隐藏、10完全隐藏， 按桌面，全屏，与任务栏碰撞排序
     static int ModeSetting;
     static int callSetting;
+    // 临时调整任务栏时，保存的原状态
+    static TaskbarMode lastMode;
 private:
     TaskbarManager();
 
@@ -70,14 +73,16 @@ private:
     std::atomic<bool> g_isPaused{false};
 
     static LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam);
+    static LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
+
     static void LoadConfig();
     static void SaveConfig();
     static int ParseJsonValue(const std::wstring& content, const std::wstring& key);
     static std::wstring GetConfigPath();
 
     HHOOK m_hMouseHook = nullptr;
+    HHOOK m_hKeyHook = nullptr;
     std::thread m_hookThread;
-    std::thread m_loopThread;
     std::atomic<bool> m_stopRequested{false};
     RECT g_taskbarRect = {0};
     HWND g_hMainTaskbar = NULL;
