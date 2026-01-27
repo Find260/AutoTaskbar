@@ -44,7 +44,7 @@ private:
     SystemTray() : m_hwnd(NULL), m_hInstance(NULL),
                    m_desktopMode(0), m_maxMode(0),
                    m_touchMode(0), m_callMode(0),
-                   m_hotkeyStr(L"None") {
+                   m_hotkeyStr(L"Win") {
         memset(&m_nid, 0, sizeof(m_nid));
     }
 
