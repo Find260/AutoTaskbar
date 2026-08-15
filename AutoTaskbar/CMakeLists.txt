@@ -16,6 +16,7 @@ add_executable(${PROJECT_NAME} WIN32
 )
 
 if(MSVC)
+    target_compile_options(${PROJECT_NAME} PRIVATE /utf-8)
     target_link_libraries(${PROJECT_NAME} PRIVATE
             comctl32.lib
             shell32.lib
@@ -28,8 +29,6 @@ if(MSVC)
             LINK_FLAGS "/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup"
             MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
     )
-    target_include_directories(${PROJECT_NAME} PRIVATE "C:/Users/Liu/Desktop/MyHookDLL/cmake-build-release")
-
 else()
     target_link_libraries(${PROJECT_NAME} PRIVATE comctl32 shell32 user32 gdi32 advapi32)
     set_target_properties(${PROJECT_NAME} PROPERTIES

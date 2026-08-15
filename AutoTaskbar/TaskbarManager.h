@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <tlhelp32.h>
 #include <Shlwapi.h>
+#include <array>
 
 #pragma comment(lib, "shlwapi.lib")
 
@@ -57,11 +58,14 @@ public:
 
     std::atomic<bool> &isPaused() { return g_isPaused; }
 
+    std::atomic<bool> &isInjected() { return g_isInjected; }
+
     RECT &taskbarRect() { return g_taskbarRect; }
 
 //00显示、01自动隐藏、10完全隐藏， 按桌面，全屏，与任务栏碰撞排序
     static int ModeSetting;
-    static int callSetting;
+    static std::atomic<int> callSetting;
+    static std::array<std::atomic<DWORD>, 3> HotkeyKeys;
     // 临时调整任务栏时，保存的原状态
     static TaskbarMode lastMode;
 private:
@@ -71,6 +75,7 @@ private:
 
     std::atomic<TaskbarMode> g_currentMode{MODE_ALWAYS_SHOW};
     std::atomic<bool> g_isPaused{false};
+    std::atomic<bool> g_isInjected{false};
 
     static LRESULT CALLBACK MouseProc(int nCode, WPARAM wParam, LPARAM lParam);
     static LRESULT CALLBACK KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam);
@@ -78,6 +83,8 @@ private:
     static void LoadConfig();
     static void SaveConfig();
     static int ParseJsonValue(const std::wstring& content, const std::wstring& key);
+    static DWORD NormalizeHotkey(DWORD vkCode);
+    static bool IsHotkeyPressed(const std::array<bool, 256>& pressedKeys);
     static std::wstring GetConfigPath();
 
     HHOOK m_hMouseHook = nullptr;

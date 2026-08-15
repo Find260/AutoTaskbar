@@ -1,28 +1,28 @@
 #include "SystemTray.h"
 
 int main() {
-    // ·ÀÖ¹¶à¸öÊµÀıÔËĞĞ
+    // é˜²æ­¢å¤šä¸ªå®ä¾‹è¿è¡Œ
     HANDLE hMutex = CreateMutex(NULL, TRUE, L"AutoTaskbar_Instance_Mutex");
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
         CloseHandle(hMutex);
         return 1;
     }
-    // ¿ª»úÑÓ³ÙÆô¶¯£¬±ÜÃâÓëÆäËûÓ¦ÓÃ³åÍ»
-    if (wcsstr(GetCommandLineW(), L"-delay")) {
-        Sleep(10000);
-    }
-    //DPIËõ·ÅÎÊÌâ
+
+    //DPIç¼©æ”¾é—®é¢˜
     SetProcessDPIAware();
 
-    auto &mgr = TaskbarManager::getInstance();
-    // ³õÊ¼»¯
-    mgr.RefreshTaskbarInfo();
-    SystemTray::getInstance().CreateTray(GetModuleHandle(NULL));
+    auto& tray = SystemTray::getInstance();
+    tray.CreateTray(GetModuleHandle(NULL));
 
-    if (mgr.CanAdjustTaskbar()) {
-        TaskbarMode initialMode = mgr.ShouldTaskbarHide();
-        mgr.ControlTaskbarLock(initialMode);
-        //std::cout << "initial taskbar lock mode: " << initialMode << std::endl;
+    TaskbarManager* mgr = nullptr;
+    bool waitingForInjection = tray.m_injectionDelaySeconds > 0;
+    ULONGLONG injectionDeadline = GetTickCount64() +
+            static_cast<ULONGLONG>(tray.m_injectionDelaySeconds) * 1000;
+    int lastRemainingSeconds = -1;
+
+    if (!waitingForInjection) {
+        tray.InitializeTaskbarManager();
+        mgr = &TaskbarManager::getInstance();
     }
 
     int checkCounter = 0;
@@ -30,7 +30,7 @@ int main() {
         MSG msg;
         while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) {
-                // ÊÍ·Å»¥³âÌå
+                // é‡Šæ”¾äº’æ–¥ä½“
                 ReleaseMutex(hMutex);
                 CloseHandle(hMutex);
                 SystemTray::getInstance().RemoveTray();
@@ -40,13 +40,32 @@ int main() {
             DispatchMessage(&msg);
         }
 
-        if (mgr.CanAdjustTaskbar()) {
-            TaskbarMode targetMode = mgr.ShouldTaskbarHide();
-            ////std::cout << "should hide: " << targetMode << ", current: " << mgr.currentMode() << std::endl;
-            if (targetMode != mgr.currentMode() || checkCounter % 10 == 0) {
+        if (waitingForInjection) {
+            if (tray.IsTaskbarManagerReady()) {
+                waitingForInjection = false;
+                mgr = &TaskbarManager::getInstance();
+            }
+            ULONGLONG now = GetTickCount64();
+            if (waitingForInjection && now >= injectionDeadline) {
+                waitingForInjection = false;
+                tray.InitializeTaskbarManager();
+                mgr = &TaskbarManager::getInstance();
+            }
+            else if (waitingForInjection) {
+                int remainingSeconds = static_cast<int>((injectionDeadline - now + 999) / 1000);
+                if (remainingSeconds != lastRemainingSeconds) {
+                    tray.SetInjectionDelayStatus(remainingSeconds);
+                    lastRemainingSeconds = remainingSeconds;
+                }
+            }
+        }
+
+        if (mgr && mgr->CanAdjustTaskbar()) {
+            TaskbarMode targetMode = mgr->ShouldTaskbarHide();
+            if (targetMode != mgr->currentMode() || checkCounter % 10 == 0) {
                 checkCounter = 0;
-                mgr.RefreshTaskbarInfo();
-                mgr.ControlTaskbarLock(targetMode);
+                mgr->RefreshTaskbarInfo();
+                mgr->ControlTaskbarLock(targetMode);
             }
         }
         checkCounter++;

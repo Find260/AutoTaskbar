@@ -20,9 +20,12 @@ HMODULE GetRemoteModuleHandle(DWORD pid, const wchar_t *moduleName) {
     return nullptr;
 }
 
-int TaskbarManager::ModeSetting = 10; // Ä¬ÈÏ
-int TaskbarManager::callSetting = 0;
+int TaskbarManager::ModeSetting = 10; // é»˜è®¤
+std::atomic<int> TaskbarManager::callSetting{0};
 TaskbarMode TaskbarManager::lastMode;
+std::array<std::atomic<DWORD>, 3> TaskbarManager::HotkeyKeys{
+        VK_LWIN, 0, 0
+};
 
 std::wstring TaskbarManager::GetConfigPath() {
     wchar_t path[MAX_PATH];
@@ -53,12 +56,22 @@ void TaskbarManager::LoadConfig() {
         int maximized = ParseJsonValue(content, L"maxMode");
         int touch = ParseJsonValue(content, L"touchMode");
         int call = ParseJsonValue(content, L"callMode");
+        DWORD hotkey1 = ParseJsonValue(content, L"hotkeyKey1");
+        DWORD hotkey2 = ParseJsonValue(content, L"hotkeyKey2");
+        DWORD hotkey3 = ParseJsonValue(content, L"hotkeyKey3");
         int mode = 0;
         mode |= ((desktop & 0x03) << 4);
         mode |= ((maximized & 0x03) << 2);
         mode |= ((touch & 0x03));
         ModeSetting = mode;
         callSetting = (call & 0x03);
+        // å…¼å®¹æ—§é…ç½®ï¼šæ²¡æœ‰æ•°å€¼é”®ç æ—¶ç»§ç»­ä½¿ç”¨åŸæ¥çš„ Win é”®ã€‚
+        if (hotkey1 == 0 && hotkey2 == 0 && hotkey3 == 0) {
+            hotkey1 = VK_LWIN;
+        }
+        HotkeyKeys[0] = NormalizeHotkey(hotkey1);
+        HotkeyKeys[1] = NormalizeHotkey(hotkey2);
+        HotkeyKeys[2] = NormalizeHotkey(hotkey3);
     }
 }
 
@@ -70,27 +83,31 @@ void TaskbarManager::SaveConfig() {
                 << L"  \"maxMode\": " << 2 << L",\n"
                 << L"  \"touchMode\": " << 2 << L",\n"
                 << L"  \"callMode\": " << 1 << L",\n"
-                << L"  \"hotkey\": \"" << "Win" << L"\"\n"
+                << L"  \"injectionDelaySeconds\": 60,\n"
+                << L"  \"hotkey\": \"" << "Win" << L"\",\n"
+                << L"  \"hotkeyKey1\": " << VK_LWIN << L",\n"
+                << L"  \"hotkeyKey2\": 0,\n"
+                << L"  \"hotkeyKey3\": 0\n"
                 << L"}\n";
         file.close();
     }
 }
 
-// Êó±ê¹³×Ó
+// é¼ æ ‡é’©å­
 LRESULT CALLBACK TaskbarManager::MouseProc(int nCode, WPARAM wParam,
                                            LPARAM lParam) {
     if (nCode >= 0) {
         auto &mgr = TaskbarManager::getInstance();
         if (wParam == WM_LBUTTONDOWN) {
-            //std::cout << "µã»÷ÊÂ¼ş" << std::endl;112@
+            //std::cout << "ç‚¹å‡»äº‹ä»¶" << std::endl;112@
             MSLLHOOKSTRUCT *pMouseStruct = (MSLLHOOKSTRUCT *) lParam;
             POINT pt = pMouseStruct->pt;
-            //std::cout << "µã»÷Î»ÖÃ: " << pt.x << ", " << pt.y << " " <<
+            //std::cout << "ç‚¹å‡»ä½ç½®: " << pt.x << ", " << pt.y << " " <<
             // mgr.g_taskbarRect.top << std::endl;
             if (pt.y >= mgr.g_taskbarRect.bottom - 2 && !mgr.isPaused() &&
                 mgr.callSetting == 1) {
                 lastMode = mgr.currentMode().load();
-                // ÔİÍ£ÈÎÎñÀ¸µÄµ÷Õû
+                // æš‚åœä»»åŠ¡æ çš„è°ƒæ•´
                 mgr.isPaused() = true;
                 mgr.ControlTaskbarLock(MODE_ALWAYS_SHOW);
                 std::thread([&mgr]() {
@@ -99,7 +116,7 @@ LRESULT CALLBACK TaskbarManager::MouseProc(int nCode, WPARAM wParam,
                     }
                 }).detach();
             }
-            // µã»÷ÈÎÎñÀ¸Íâ, ÇÒÊÇÔİÍ£×´Ì¬
+            // ç‚¹å‡»ä»»åŠ¡æ å¤–, ä¸”æ˜¯æš‚åœçŠ¶æ€
             else if (!PtInRect(&mgr.g_taskbarRect, pt) && mgr.isPaused()) {
                 mgr.isPaused() = false;
                 mgr.ControlTaskbarLock(lastMode);
@@ -109,39 +126,78 @@ LRESULT CALLBACK TaskbarManager::MouseProc(int nCode, WPARAM wParam,
     return CallNextHookEx(nullptr, nCode, wParam, lParam);
 }
 
-// ¼üÅÌ¹³×Ó
+DWORD TaskbarManager::NormalizeHotkey(DWORD vkCode) {
+    switch (vkCode) {
+        case VK_LCONTROL:
+        case VK_RCONTROL:
+            return VK_CONTROL;
+        case VK_LSHIFT:
+        case VK_RSHIFT:
+            return VK_SHIFT;
+        case VK_LMENU:
+        case VK_RMENU:
+            return VK_MENU;
+        case VK_RWIN:
+            return VK_LWIN;
+        default:
+            return vkCode;
+    }
+}
+
+bool TaskbarManager::IsHotkeyPressed(const std::array<bool, 256>& pressedKeys) {
+    bool hasKey = false;
+    for (const auto& configuredKey : HotkeyKeys) {
+        DWORD key = configuredKey.load();
+        if (key == 0) {
+            continue;
+        }
+        hasKey = true;
+        if (key >= pressedKeys.size() || !pressedKeys[key]) {
+            return false;
+        }
+    }
+    return hasKey;
+}
+
+// é”®ç›˜é’©å­
 LRESULT CALLBACK TaskbarManager::KeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    static std::array<bool, 256> pressedKeys{};
+    static bool hotkeyLatched = false;
+
     if (nCode == HC_ACTION) {
-        if (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) {
-            KBDLLHOOKSTRUCT *pKeyStruct = (KBDLLHOOKSTRUCT *) lParam;
-            if (pKeyStruct->vkCode == VK_LWIN || pKeyStruct->vkCode == VK_RWIN) {
-                auto &mgr = TaskbarManager::getInstance();
-                if (!mgr.isPaused() && mgr.callSetting == 2) {
-                    lastMode = mgr.currentMode().load();
-                    // ÔİÍ£ÈÎÎñÀ¸µÄµ÷Õû
-                    //std::cout << "1Win" << std::endl;
-                    mgr.isPaused() = true;
-                    mgr.ControlTaskbarLock(MODE_ALWAYS_SHOW);
-                    std::thread([&mgr]() {
-                        while (mgr.isPaused()) {
-                            Sleep(50);
-                        }
-                    }).detach();
+        auto* keyInfo = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
+        DWORD key = NormalizeHotkey(keyInfo->vkCode);
+        bool isKeyDown = (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN);
+        bool isKeyUp = (wParam == WM_KEYUP || wParam == WM_SYSKEYUP);
+
+        if (key < pressedKeys.size() && (isKeyDown || isKeyUp)) {
+            pressedKeys[key] = isKeyDown;
+            bool hotkeyPressed = IsHotkeyPressed(pressedKeys);
+
+            if (hotkeyPressed && !hotkeyLatched) {
+                hotkeyLatched = true;
+                auto& mgr = TaskbarManager::getInstance();
+                if (mgr.callSetting == 2) {
+                    if (!mgr.isPaused()) {
+                        lastMode = mgr.currentMode().load();
+                        mgr.isPaused() = true;
+                        mgr.ControlTaskbarLock(MODE_ALWAYS_SHOW);
+                    }
+                    else {
+                        mgr.isPaused() = false;
+                        mgr.ControlTaskbarLock(lastMode);
+                    }
                 }
-                else if (mgr.isPaused() && mgr.callSetting == 2) {
-                    //std::cout << "2Win" << std::endl;
-                    mgr.isPaused() = false;
-                    mgr.ControlTaskbarLock(lastMode);
-                }
-                // ¡°À¹½Ø¡±Win¼ü£¨ÈÃ¿ªÊ¼²Ëµ¥²»µ¯³öÀ´£©
-                // return 1;
+            }
+            else if (!hotkeyPressed) {
+                hotkeyLatched = false;
             }
         }
     }
     return CallNextHookEx(nullptr, nCode, wParam, lParam);
 }
 
-// Ë¢ĞÂÈÎÎñÀ¸ĞÅÏ¢(¾ä±ú£¬¾ØĞÎ)
+// åˆ·æ–°ä»»åŠ¡æ ä¿¡æ¯(å¥æŸ„ï¼ŒçŸ©å½¢)
 void TaskbarManager::RefreshTaskbarInfo() {
     if (!g_hMainTaskbar || !IsWindow(g_hMainTaskbar)) {
         g_hMainTaskbar = FindWindowW(L"Shell_TrayWnd", nullptr);
@@ -175,7 +231,7 @@ void TaskbarManager::ControlTaskbarLock(TaskbarMode mode) {
             ShowTaskbar2(true);
             break;
         case MODE_AUTO_HIDE_SOFT:
-            // ÔÚ·ÇÈ«ÆÁÊ±£¬´°¿Úµ×²¿´¥Åöµ½ÈÎÎñÀ¸Ê±£¬²»µ÷ÕûÈÎÎñÀ¸ÑùÊ½£¬Ö»Í¸Ã÷´¦Àí£¬·ÀÖ¹´°¿Ú¶¶¶¯
+            // åœ¨éå…¨å±æ—¶ï¼Œçª—å£åº•éƒ¨è§¦ç¢°åˆ°ä»»åŠ¡æ æ—¶ï¼Œä¸è°ƒæ•´ä»»åŠ¡æ æ ·å¼ï¼Œåªé€æ˜å¤„ç†ï¼Œé˜²æ­¢çª—å£æŠ–åŠ¨
             if (AutoHideTag == 0) {
                 if (this->windowStatus != 2) {
                     SetTaskbarAutoHide(true);
@@ -206,9 +262,9 @@ bool TaskbarManager::CanAdjustTaskbar() {
     return true;
 }
 
-// ´°¿ÚµÄ×´Ì¬
+// çª—å£çš„çŠ¶æ€
 void TaskbarManager::UpDateWindowStatus() {
-    // 0: ÔÚ×ÀÃæ 1£ºÈ«ÆÁ 2£º´°¿Úµ×²¿´¥Åöµ½ÈÎÎñÀ¸
+    // 0: åœ¨æ¡Œé¢ 1ï¼šå…¨å± 2ï¼šçª—å£åº•éƒ¨è§¦ç¢°åˆ°ä»»åŠ¡æ 
     int status = 0;
     struct Context {
         TaskbarManager *ptr;
@@ -230,7 +286,7 @@ void TaskbarManager::UpDateWindowStatus() {
             if (GetWindowTextA(hwnd, title, sizeof(title)) == 0) {
                 return TRUE;
             }
-            // ÅĞ¶ÏÊÇ²»ÊÇÖ÷ÏÔÊ¾Æ÷ËùÔÚ´°¿Ú
+            // åˆ¤æ–­æ˜¯ä¸æ˜¯ä¸»æ˜¾ç¤ºå™¨æ‰€åœ¨çª—å£
             HMONITOR hMonitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL);
             if (hMonitor) {
                 MONITORINFO mi;
@@ -261,7 +317,7 @@ void TaskbarManager::UpDateWindowStatus() {
     this->windowStatus = status;
 }
 
-// ÅĞ¶ÏÓ¦¸Ãµ÷ÕûÎªÄÄÖÖÄ£Ê½
+// åˆ¤æ–­åº”è¯¥è°ƒæ•´ä¸ºå“ªç§æ¨¡å¼
 TaskbarMode TaskbarManager::ShouldTaskbarHide() {
     UpDateWindowStatus();
     switch (this->windowStatus) {
@@ -276,7 +332,7 @@ TaskbarMode TaskbarManager::ShouldTaskbarHide() {
     }
 }
 
-// ÉèÖÃÈÎÎñÀ¸×Ô¶¯Òş²Ø(ÏµÍ³ÉèÖÃ)
+// è®¾ç½®ä»»åŠ¡æ è‡ªåŠ¨éšè—(ç³»ç»Ÿè®¾ç½®)
 void TaskbarManager::SetTaskbarAutoHide(bool enable) {
     APPBARDATA abd = {0};
     abd.cbSize = sizeof(APPBARDATA);
@@ -287,7 +343,7 @@ void TaskbarManager::SetTaskbarAutoHide(bool enable) {
     SHAppBarMessage(ABM_SETSTATE, &abd);
 }
 
-// Ö±½ÓÒş²ØÈÎÎñÀ¸£¬¾ÍÊÇ¼òµ¥½«ÈÎÎñÀ¸ËùÔÚÇøÓòÍ¸Ã÷
+// ç›´æ¥éšè—ä»»åŠ¡æ ï¼Œå°±æ˜¯ç®€å•å°†ä»»åŠ¡æ æ‰€åœ¨åŒºåŸŸé€æ˜
 void TaskbarManager::ShowTaskbar1(bool isShow) {
     if (isShow) {
         ShowWindow(this->g_hMainTaskbar, SW_SHOW);
@@ -297,7 +353,7 @@ void TaskbarManager::ShowTaskbar1(bool isShow) {
     }
 }
 
-// ½öÊÊºÏ×Ô¶¯Òş²ØÄ£Ê½ÏÂ£¬°üº¬¹ı¶É¶¯»­
+// ä»…é€‚åˆè‡ªåŠ¨éšè—æ¨¡å¼ä¸‹ï¼ŒåŒ…å«è¿‡æ¸¡åŠ¨ç”»
 void TaskbarManager::ShowTaskbar2(bool isShow) {
     HMONITOR hMon =
             MonitorFromWindow(this->g_hMainTaskbar, MONITOR_DEFAULTTONEAREST);
@@ -308,32 +364,43 @@ void TaskbarManager::ShowTaskbar2(bool isShow) {
     }
 }
 
-// ×¢Èë/Ğ¶ÔØ DLL µ½×ÊÔ´¹ÜÀíÆ÷£¬À¹½ØËü¶ÔÈÎÎñÀ¸µÄ¿ØÖÆ
+// æ³¨å…¥/å¸è½½ DLL åˆ°èµ„æºç®¡ç†å™¨ï¼Œæ‹¦æˆªå®ƒå¯¹ä»»åŠ¡æ çš„æ§åˆ¶
 void TaskbarManager::injector(bool isInject) {
     g_hMainTaskbar = FindWindowW(L"Shell_TrayWnd", nullptr);
-    if (!g_hMainTaskbar)
+    if (!g_hMainTaskbar) {
+        if (isInject) g_isInjected = false;
         return;
+    }
     DWORD pid;
     GetWindowThreadProcessId(g_hMainTaskbar, &pid);
 
-    // ½ø³Ì¾ä±ú
+    HMODULE existingModule = GetRemoteModuleHandle(pid, L"AutoTaskbarHook.dll");
+    if (isInject && existingModule) {
+        g_isInjected = true;
+        return;
+    }
+
+    // è¿›ç¨‹å¥æŸ„
     HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);
     if (!hProcess) {
+        if (isInject) g_isInjected = false;
         return;
     }
 
     if (isInject) {
-        // ×¢Èë ---
+        // æ³¨å…¥ ---
         wchar_t currentDir[MAX_PATH];
         GetModuleFileNameW(nullptr, currentDir, MAX_PATH);
         PathRemoveFileSpecW(currentDir);
 
-        //  DLLÂ·¾¶
+        //  DLLè·¯å¾„
         std::wstring fullDllPath =
                 std::wstring(currentDir) + L"\\AutoTaskbarHook.dll";
         const wchar_t *dllPath = fullDllPath.c_str();
         if (_waccess(dllPath, 0) != 0) {
             // std::wcerr << L"ERROR: DLL file not found at: " << dllPath << std::endl;
+            g_isInjected = false;
+            CloseHandle(hProcess);
             return;
         }
 
@@ -350,12 +417,14 @@ void TaskbarManager::injector(bool isInject) {
             if (hThread) {
                 WaitForSingleObject(hThread, INFINITE);
                 CloseHandle(hThread);
+                g_isInjected = GetRemoteModuleHandle(pid, L"AutoTaskbarHook.dll") != nullptr;
                 //std::cout << "SUCCESS: DLL Injected and Hooked." << std::endl;
             }
+            VirtualFreeEx(hProcess, pBuf, 0, MEM_RELEASE);
         }
     }
     else {
-        // Ğ¶ÔØ
+        // å¸è½½
         HWND hTray = FindWindowW(L"Shell_TrayWnd", nullptr);
         if (!hTray) {
             //std::cout << "Error: Could not find Shell_TrayWnd" << std::endl;
@@ -373,10 +442,12 @@ void TaskbarManager::injector(bool isInject) {
             if (hThread) {
                 WaitForSingleObject(hThread, INFINITE);
                 CloseHandle(hThread);
+                g_isInjected = GetRemoteModuleHandle(pid, L"AutoTaskbarHook.dll") != nullptr;
                 //std::cout << "SUCCESS: DLL Unloaded." << std::endl;
             }
         }
         else {
+            g_isInjected = false;
             //std::cout << "WARNING: DLL Not Found in Remote Process." << std::endl;
         }
     }
@@ -388,7 +459,7 @@ TaskbarManager::TaskbarManager() {
     Init();
     injector(true);
 
-    // °²×°¹³×Ó
+    // å®‰è£…é’©å­
     InstallHook();
 }
 
@@ -397,7 +468,7 @@ TaskbarManager::~TaskbarManager() {
     ControlTaskbarLock(MODE_AUTO_HIDE_SOFT);
     ShowTaskbar2(false);
 
-    // Ğ¶ÔØ¹³×Ó
+    // å¸è½½é’©å­
     if (this->m_hKeyHook) {
         UnhookWindowsHookEx(this->m_hKeyHook);
         this->m_hKeyHook = nullptr;
@@ -416,7 +487,7 @@ void TaskbarManager::Init() {
     LoadConfig();
     //std::cout << "Init TaskbarManager: " << ModeSetting << " " << callSetting << std::endl;
     RefreshTaskbarInfo();
-    // ×Ô¶¯Òş²ØÏµÍ³ÉèÖÃ¿ª¹Ø
+    // è‡ªåŠ¨éšè—ç³»ç»Ÿè®¾ç½®å¼€å…³
     if (((TaskbarMode) (ModeSetting >> 2) & 3) == MODE_ALWAYS_SHOW) {
         SetTaskbarAutoHide(false);
         AutoHideTag = 0;
@@ -425,7 +496,7 @@ void TaskbarManager::Init() {
         SetTaskbarAutoHide(true);
         AutoHideTag = 1;
     }
-    /* ÖØĞÂ°²×°¹³×Ó
+    /* é‡æ–°å®‰è£…é’©å­
     if (this->m_hKeyHook) {
         UnhookWindowsHookEx(this->m_hKeyHook);
         this->m_hKeyHook = nullptr;
@@ -442,11 +513,11 @@ void TaskbarManager::Init() {
 void TaskbarManager::InstallHook() {
     m_hookThread = std::thread([this]() {
        // if (callSetting == 2) {
-       //     // ¼üÅÌ¹³×Ó
+       //     // é”®ç›˜é’©å­
        //     this->m_hKeyHook = SetWindowsHookEx(WH_KEYBOARD_LL,KeyboardProc,GetModuleHandle(nullptr),0);
        // }
        // else if (callSetting == 1) {
-       //     // Êó±ê¹³×Ó
+       //     // é¼ æ ‡é’©å­
        //     this->m_hMouseHook = SetWindowsHookEx(WH_MOUSE_LL,MouseProc,GetModuleHandle(nullptr),0);
        // }
 
@@ -460,7 +531,6 @@ void TaskbarManager::InstallHook() {
            TranslateMessage(&msg);
            DispatchMessage(&msg);
        }
-   });
+    });
     m_hookThread.detach();
 }
-
