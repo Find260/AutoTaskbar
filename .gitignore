@@ -18,3 +18,5 @@ CMakeFiles/
 
 *.tmp
 *.log
+
+release/
