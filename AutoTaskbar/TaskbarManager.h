@@ -96,3 +96,5 @@ private:
     int windowStatus;
     void UpDateWindowStatus();
 };
+
+//atb-tmp

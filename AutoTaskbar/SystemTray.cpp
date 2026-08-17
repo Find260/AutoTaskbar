@@ -631,3 +631,5 @@ void SystemTray::SetAutoStart(bool b) {
         RegCloseKey(k);
     }
 }
+
+//atb-tmp
