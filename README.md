@@ -2,6 +2,19 @@
 
 AutoTaskbar 是一款适用于 Windows 的任务栏自动管理工具。它可以根据当前窗口状态自动切换任务栏显示模式，并通过系统托盘提供快捷、直观的设置入口。
 
+## 获取安装包
+
+当前未使用 GitHub Releases 发布，安装包直接存放在仓库的 `release/` 目录中：
+
+- `release/AutoTaskbar-v1.1.0-win-x64.zip`
+
+压缩包内包含：
+
+- `AutoTaskbar.exe` — 主程序
+- `AutoTaskbarHook.dll` — Hook DLL
+
+下载后将压缩包解压到任意目录，保持 `AutoTaskbar.exe` 与 `AutoTaskbarHook.dll` 位于同一目录，双击 `AutoTaskbar.exe` 即可运行，无需安装。
+
 ## 功能特性
 
 - 根据使用场景自动管理任务栏：
@@ -53,6 +66,7 @@ AutoTaskbar/
 │   ├── lib/
 │   └── CMakeLists.txt
 ├── .gitignore
+├── release/                     # 安装包（AutoTaskbar-v1.1.0-win-x64.zip）
 └── README.md
 ```
 
