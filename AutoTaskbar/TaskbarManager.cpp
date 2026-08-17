@@ -534,5 +534,3 @@ void TaskbarManager::InstallHook() {
     });
     m_hookThread.detach();
 }
-
-//atb-tmp

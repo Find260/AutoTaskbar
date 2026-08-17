@@ -90,5 +90,3 @@ private:
     static std::wstring FormatHotkey(const std::array<DWORD, 3>& keys);
     std::wstring GetConfigPath();
 };
-
-//atb-tmp
