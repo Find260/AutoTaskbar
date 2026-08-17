@@ -72,5 +72,3 @@ int main() {
         Sleep(300);
     }
 }
-
-// AutoTaskbar tmp
