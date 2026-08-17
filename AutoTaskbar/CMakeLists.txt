@@ -41,5 +41,3 @@ set(CPACK_PACKAGE_NAME "AutoTaskbar")
 set(CPACK_PACKAGE_VERSION "1.1.0")
 set(CPACK_PACKAGE_VENDOR "Liu")
 include(CPack)
-
-//atb-tmp
