@@ -1057,5 +1057,3 @@ BOOL WINAPI DetourVirtualProtectSameExecute(_In_  PVOID pAddress,
 #endif // _DETOURS_H_
 //
 ////////////////////////////////////////////////////////////////  End of File.
-
-//atb-tmp
